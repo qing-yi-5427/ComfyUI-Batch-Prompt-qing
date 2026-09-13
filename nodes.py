@@ -603,10 +603,9 @@ class Qing_ImageGallery:
             extra_pnginfo=extra_pnginfo,
         )
         return {
-            # Keep the standard images key present for ComfyUI's output protocol,
-            # but leave it empty so the native preview widget does not duplicate
-            # the qing gallery UI. The custom gallery consumes gallery instead.
-            "ui": {"images": [], "gallery": preview.get("ui", {}).get("images", [])},
+            # Use ComfyUI's standard output schema. The qing frontend adds the
+            # previous/next/all-images controls on top of these image entries.
+            "ui": {"images": preview.get("ui", {}).get("images", [])},
             "result": (images,),
         }
 

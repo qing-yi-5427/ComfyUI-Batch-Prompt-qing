@@ -1073,7 +1073,7 @@ function installGalleryExecutionListener() {
         const node = galleryNodes.get(String(detail.node));
         if (!node) return;
         if (node.__bpqGalleryProgressiveEvents > 0) return;
-        const images = detail.output?.gallery || detail.output?.ui?.gallery || [];
+        const images = detail.output?.images || detail.output?.ui?.images || [];
         appendGalleryImages(node, detail.prompt_id || detail.promptId || null, images);
     });
 }
