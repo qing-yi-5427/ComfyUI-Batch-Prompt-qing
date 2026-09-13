@@ -954,10 +954,17 @@ function setupGallery(node) {
     });
     widget.serialize = false;
     widget.computeSize = (width) => [Math.max(360, width || node.size?.[0] || 520), node.__bpqGalleryHeight || 500];
-    widget.afterResize = () => { root.style.height = `${node.__bpqGalleryHeight || 500}px`; };
+    const syncGalleryBoxSize = () => {
+        const nodeWidth = Number(node.size?.[0]) || 520;
+        const nodeHeight = Number(node.size?.[1]) || 570;
+        root.style.width = `${Math.max(360, nodeWidth - 16)}px`;
+        root.style.height = `${Math.max(320, nodeHeight - 58)}px`;
+    };
+    widget.afterResize = syncGalleryBoxSize;
     node.__bpqGalleryWidget = widget;
     node.__bpqGalleryHeight = 500;
     root.style.height = "500px";
+    requestAnimationFrame(syncGalleryBoxSize);
     updateGallery(node);
     node.setSize?.([Math.max(430, node.size?.[0] || 520), Math.max(570, node.size?.[1] || 570)]);
     node.graph?.setDirtyCanvas?.(true, true);
