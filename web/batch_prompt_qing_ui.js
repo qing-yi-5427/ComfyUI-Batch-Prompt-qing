@@ -964,6 +964,19 @@ function setupGallery(node) {
     node.__bpqGalleryWidget = widget;
     node.__bpqGalleryHeight = 500;
     root.style.height = "500px";
+    const originalOnResize = node.onResize;
+    node.onResize = function (...args) {
+        const result = originalOnResize?.apply(this, args);
+        requestAnimationFrame(syncGalleryBoxSize);
+        return result;
+    };
+    if (typeof ResizeObserver === "function") {
+        const resizeObserver = new ResizeObserver(() => {
+            requestAnimationFrame(syncGalleryBoxSize);
+        });
+        resizeObserver.observe(root.parentElement || root);
+        node.__bpqGalleryResizeObserver = resizeObserver;
+    }
     requestAnimationFrame(syncGalleryBoxSize);
     updateGallery(node);
     node.setSize?.([Math.max(430, node.size?.[0] || 520), Math.max(570, node.size?.[1] || 570)]);
