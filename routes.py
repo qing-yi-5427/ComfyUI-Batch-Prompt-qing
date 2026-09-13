@@ -3,9 +3,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import time
 from pathlib import Path
 
+import aiohttp
 from aiohttp import web
 from server import PromptServer
 
@@ -88,6 +91,77 @@ async def list_prompt_files(request):
         return web.json_response({"ok": True, "files": files})
     except OSError as error:
         return web.json_response({"ok": False, "error": str(error)}, status=500)
+
+
+async def _translate_text(session: aiohttp.ClientSession, text: str) -> str:
+    """Translate one text through Tencent TranSmart's mainland endpoint."""
+    if not text.strip():
+        return ""
+    payload = {
+        "header": {
+            "fn": "auto_translation",
+            "client_key": "ComfyUI-Batch-Prompt-qing",
+            "user": "",
+            "domain": "general",
+            "timestamp": int(time.time() * 1000),
+        },
+        "type": "plain",
+        "model_category": "normal",
+        "source": {"lang": "en", "text_list": [text]},
+        "target": {"lang": "zh"},
+    }
+    async with session.post(
+        "https://transmart.qq.com/api/imt",
+        json=payload,
+        headers={
+            "User-Agent": "Mozilla/5.0 ComfyUI-Batch-Prompt-qing/1.7",
+            "Referer": "https://transmart.qq.com/zh-CN/index",
+        },
+    ) as response:
+        if response.status != 200:
+            raise ValueError(f"翻译服务返回 HTTP {response.status}")
+        payload = await response.json(content_type=None)
+
+    if not isinstance(payload, dict):
+        raise ValueError("翻译服务返回了无效结果")
+    header = payload.get("header")
+    if not isinstance(header, dict) or header.get("ret_code") != "succ":
+        raise ValueError("腾讯翻译服务返回失败状态")
+    translations = payload.get("auto_translation")
+    if isinstance(translations, list) and translations:
+        result = "".join(str(item) for item in translations if item is not None)
+        if result:
+            return result
+    raise ValueError("翻译服务没有返回译文")
+
+
+@PromptServer.instance.routes.post("/batch_prompt_qing/translate")
+async def translate_prompt_records(request):
+    """Translate card display text without changing the JSONL source."""
+    try:
+        payload = await request.json()
+        records = payload.get("records", []) if isinstance(payload, dict) else []
+        if not isinstance(records, list) or not 1 <= len(records) <= 100:
+            raise ValueError("records 必须是 1 到 100 条的数组。")
+
+        timeout = aiohttp.ClientTimeout(total=90)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            translated = []
+            for record in records:
+                if not isinstance(record, dict):
+                    raise ValueError("records 中包含无效对象。")
+                name = record.get("name", "")
+                positive = record.get("positive", "")
+                if not isinstance(name, str) or not isinstance(positive, str):
+                    raise ValueError("每条记录的 name 和 positive 必须是字符串。")
+                values = await asyncio.gather(
+                    _translate_text(session, name),
+                    _translate_text(session, positive),
+                )
+                translated.append({"name": values[0], "positive": values[1]})
+        return web.json_response({"ok": True, "records": translated})
+    except (OSError, ValueError, aiohttp.ClientError, asyncio.TimeoutError) as error:
+        return web.json_response({"ok": False, "error": f"翻译失败：{error}"}, status=400)
 
 
 @PromptServer.instance.routes.post("/batch_prompt_qing/save")

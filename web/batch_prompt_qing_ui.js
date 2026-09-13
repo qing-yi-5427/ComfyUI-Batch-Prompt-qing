@@ -4,6 +4,7 @@ import { api } from "../../../scripts/api.js";
 const NODE_NAME = "TE_BatchPromptSource";
 const PREVIEW_ROUTE = "/batch_prompt_qing/preview";
 const FILE_LIST_ROUTE = "/batch_prompt_qing/files";
+const TRANSLATE_ROUTE = "/batch_prompt_qing/translate";
 const SAVE_ROUTE = "/batch_prompt_qing/save";
 const HIDDEN_TYPE = "batch-prompt-te-hidden";
 const STYLE_ID = "batch-prompt-te-card-editor-style";
@@ -86,6 +87,8 @@ function injectStyle() {
         .bpte-file-source { color:#83cda3; font-size:10px; }
         .bpte-file-path { grid-column:1/-1; min-width:0; overflow:hidden; color:#89949f; font-size:10px; white-space:nowrap; text-overflow:ellipsis; }
         .bpte-picker-empty { display:grid; place-items:center; min-height:170px; padding:24px; border:1px dashed #4b535d; border-radius:8px; color:#909ba6; text-align:center; }
+        .bpte-translation-note { color:#83cda3 !important; }
+        .bpte-readonly { background:#20252a !important; color:#d6dde3 !important; cursor:default; }
     `;
     document.head.append(style);
 }
@@ -171,6 +174,69 @@ function recordsToJsonl(records) {
     return records.map((record, index) => JSON.stringify(normalizeRecord(record, index))).join("\n") + "\n";
 }
 
+function isChineseDisplay(node) {
+    return node.__bpteDisplayLanguage === "zh";
+}
+
+async function translateDisplay(node) {
+    const records = node.__bpteRecords || [];
+    if (!records.length) {
+        setStatus(node, "没有可翻译的 Prompt 卡片", "error");
+        return;
+    }
+    setStatus(node, "正在翻译卡片预览…");
+    try {
+        const response = await api.fetchApi(TRANSLATE_ROUTE, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                records: records.map(({ name, positive }) => ({ name, positive })),
+            }),
+        });
+        const data = await response.json();
+        if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        if (!Array.isArray(data.records) || data.records.length !== records.length) {
+            throw new Error("翻译结果数量与卡片数量不一致");
+        }
+        records.forEach((record, index) => {
+            const translated = data.records[index] || {};
+            record.__bpteTranslation = {
+                name: typeof translated.name === "string" ? translated.name : record.name,
+                positive: typeof translated.positive === "string" ? translated.positive : record.positive,
+            };
+        });
+        node.__bpteDisplayLanguage = "zh";
+        renderCards(node);
+        updateTranslationButton(node);
+        setStatus(node, "中文预览已开启 · 只读，不会传给模型", "ok");
+    } catch (error) {
+        setStatus(node, `翻译失败：${error instanceof Error ? error.message : String(error)}`, "error");
+    }
+}
+
+function toggleDisplayLanguage(node) {
+    if (isChineseDisplay(node)) {
+        node.__bpteDisplayLanguage = "en";
+        renderCards(node);
+        updateTranslationButton(node);
+        setStatus(node, "英文编辑模式 · Queue 使用英文原文", "ok");
+        return;
+    }
+    translateDisplay(node);
+}
+
+function updateTranslationButton(node) {
+    const button = node.__bpteTranslationButton;
+    if (!button) return;
+    const chinese = isChineseDisplay(node);
+    button.textContent = chinese ? "显示英文" : "中文预览";
+    button.title = chinese
+        ? "切回英文原文并继续编辑"
+        : "只切换卡片显示为中文，Queue 和模型仍使用英文原文";
+    button.classList.toggle("bpte-btn-primary", chinese);
+    button.setAttribute("aria-pressed", chinese ? "true" : "false");
+}
+
 function setStatus(node, text, tone = "") {
     if (!node.__bpteStatus) return;
     node.__bpteStatus.textContent = text;
@@ -221,6 +287,7 @@ function renderCards(node) {
     if (!grid) return;
     grid.replaceChildren();
     const records = node.__bpteRecords || [];
+    const chinese = isChineseDisplay(node);
     if (!records.length) {
         const empty = document.createElement("div");
         empty.className = "bpte-empty";
@@ -243,14 +310,19 @@ function renderCards(node) {
         const name = document.createElement("input");
         name.className = "bpte-field bpte-name";
         name.type = "text";
-        name.value = record.name;
+        name.value = chinese ? (record.__bpteTranslation?.name || record.name) : record.name;
         name.placeholder = `prompt-${String(index + 1).padStart(3, "0")}`;
+        name.readOnly = chinese;
+        if (chinese) name.classList.add("bpte-readonly");
         name.setAttribute("aria-label", `第 ${index + 1} 张卡片名称`);
-        name.addEventListener("input", () => {
-            record.name = name.value;
-            name.dataset.invalid = name.value.trim() ? "false" : "true";
-            syncEditor(node);
-        });
+        if (!chinese) {
+            name.addEventListener("input", () => {
+                record.name = name.value;
+                record.__bpteTranslation = null;
+                name.dataset.invalid = name.value.trim() ? "false" : "true";
+                syncEditor(node);
+            });
+        }
 
         const actions = document.createElement("div");
         actions.className = "bpte-card-actions";
@@ -268,21 +340,29 @@ function renderCards(node) {
         const label = document.createElement("label");
         label.className = "bpte-label";
         const labelText = document.createElement("span");
-        labelText.textContent = "Positive Prompt";
+        labelText.textContent = chinese ? "中文预览（只读）" : "Positive Prompt";
+        if (chinese) labelText.className = "bpte-translation-note";
         const countText = document.createElement("span");
         countText.textContent = `本组 ${currentCount(node)} 张`;
         label.append(labelText, countText);
         const textarea = document.createElement("textarea");
         textarea.className = "bpte-field bpte-prompt";
-        textarea.value = record.positive;
-        textarea.placeholder = "输入这一组的正面 Prompt…";
+        textarea.value = chinese
+            ? (record.__bpteTranslation?.positive || record.positive)
+            : record.positive;
+        textarea.placeholder = chinese ? "中文只用于阅读，不会传给模型" : "输入这一组的正面 Prompt…";
         textarea.spellcheck = false;
+        textarea.readOnly = chinese;
+        if (chinese) textarea.classList.add("bpte-readonly");
         textarea.setAttribute("aria-label", `第 ${index + 1} 张卡片的正面 Prompt`);
-        textarea.addEventListener("input", () => {
-            record.positive = textarea.value;
-            textarea.dataset.invalid = textarea.value.trim() ? "false" : "true";
-            syncEditor(node);
-        });
+        if (!chinese) {
+            textarea.addEventListener("input", () => {
+                record.positive = textarea.value;
+                record.__bpteTranslation = null;
+                textarea.dataset.invalid = textarea.value.trim() ? "false" : "true";
+                syncEditor(node);
+            });
+        }
         body.append(label, textarea);
         card.append(head, body);
         grid.append(card);
@@ -435,6 +515,7 @@ async function loadFile(node, { force = false } = {}) {
         if (requestId !== node.__bpteRequestId) return;
         if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
         node.__bpteRecords = data.records.map(normalizeRecord);
+        node.__bpteDisplayLanguage = "en";
         node.__bpteFileSha = data.file_sha256 || "";
         node.__bpteDirty = false;
         node.properties ??= {};
@@ -442,6 +523,7 @@ async function loadFile(node, { force = false } = {}) {
         node.properties.bpte_editor_path = promptFile;
         syncEditor(node, { dirty: false });
         renderCards(node);
+        updateTranslationButton(node);
         setStatus(node, `已读取 ${data.record_count} 组 · ${data.file_name}`, "ok");
     } catch (error) {
         if (requestId !== node.__bpteRequestId) return;
@@ -493,6 +575,7 @@ function createEditor(node) {
     status.textContent = "等待读取";
     title.append(heading, status);
     const choose = makeButton("选择文件", "bpte-btn", () => openFilePicker(node), "列出插件 prompts 目录和当前文件夹中的 JSONL 文件");
+    const translation = makeButton("中文预览", "bpte-btn", () => toggleDisplayLanguage(node), "只切换卡片显示为中文，Queue 和模型仍使用英文原文");
     const reload = makeButton("重新读取", "bpte-btn", () => loadFile(node, { force: true }), "从磁盘重新载入，会替换未保存修改");
     const add = makeButton("添加卡片", "bpte-btn", () => addRecord(node));
     const negativeToggle = makeButton("负面 Prompt · 关", "bpte-btn", () => {
@@ -503,7 +586,7 @@ function createEditor(node) {
     });
     negativeToggle.setAttribute("aria-pressed", "false");
     const save = makeButton("保存 JSONL", "bpte-btn bpte-btn-primary", () => saveFile(node));
-    toolbar.append(title, choose, reload, add, negativeToggle, save);
+    toolbar.append(title, choose, translation, reload, add, negativeToggle, save);
 
     const picker = document.createElement("section");
     picker.className = "bpte-file-picker";
@@ -543,6 +626,7 @@ function createEditor(node) {
     node.__bpteDirtyDot = dot;
     node.__bpteSaveButton = save;
     node.__bpteNegativeButton = negativeToggle;
+    node.__bpteTranslationButton = translation;
     node.__bpteFilePicker = picker;
     node.__bpteFileList = fileList;
 
@@ -558,6 +642,7 @@ function createEditor(node) {
     widget.computeSize = (width) => [Math.max(420, width || node.size?.[0] || 680), node.__bpteEditorHeight];
     widget.afterResize = () => { root.style.height = `${node.__bpteEditorHeight}px`; };
     node.__bpteEditorWidget = widget;
+    updateTranslationButton(node);
     setWidgetVisible(widget, false);
 }
 
