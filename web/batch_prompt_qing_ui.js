@@ -664,10 +664,29 @@ function createEditor(node) {
     });
     widget.serialize = false;
     widget.computeSize = (width) => [Math.max(420, width || node.size?.[0] || 680), node.__bpteEditorHeight];
-    widget.afterResize = () => { root.style.height = `${node.__bpteEditorHeight}px`; };
+    const syncEditorBoxSize = () => {
+        const nodeWidth = Number(node.size?.[0]) || 680;
+        root.style.width = `${Math.max(420, nodeWidth - 16)}px`;
+        root.style.height = `${node.__bpteEditorHeight}px`;
+    };
+    widget.afterResize = syncEditorBoxSize;
+    const originalOnResize = node.onResize;
+    node.onResize = function (...args) {
+        const result = originalOnResize?.apply(this, args);
+        requestAnimationFrame(syncEditorBoxSize);
+        return result;
+    };
+    if (typeof ResizeObserver === "function") {
+        const resizeObserver = new ResizeObserver(() => {
+            requestAnimationFrame(syncEditorBoxSize);
+        });
+        resizeObserver.observe(root.parentElement || root);
+        node.__bpteEditorResizeObserver = resizeObserver;
+    }
     node.__bpteEditorWidget = widget;
     updateTranslationButton(node);
     setWidgetVisible(widget, false);
+    requestAnimationFrame(syncEditorBoxSize);
 }
 
 function setEditorHeight(node, value) {
