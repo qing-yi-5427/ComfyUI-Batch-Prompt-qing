@@ -100,7 +100,7 @@ async def _translate_text(session: aiohttp.ClientSession, text: str) -> str:
     payload = {
         "header": {
             "fn": "auto_translation",
-            "client_key": "ComfyUI-Batch-Prompt-qing",
+            "client_key": "browser-chrome-140.0.0-Windows_10",
             "user": "",
             "domain": "general",
             "timestamp": int(time.time() * 1000),
