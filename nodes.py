@@ -572,7 +572,6 @@ class Qing_ImageGallery:
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("images",)
     FUNCTION = "show_images"
-    OUTPUT_NODE = True
 
     CATEGORY = "qing/Output"
     DESCRIPTION = (
@@ -611,10 +610,7 @@ class Qing_ImageGallery:
         except (ImportError, AttributeError, RuntimeError):
             # The gallery still returns its final list when running without a UI client.
             pass
-        return {
-            "ui": {"gallery": result.get("ui", {}).get("images", [])},
-            "result": (images,),
-        }
+        return (images,)
 
 
 __all__ = [
