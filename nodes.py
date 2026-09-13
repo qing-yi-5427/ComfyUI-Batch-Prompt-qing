@@ -23,8 +23,10 @@ from typing import Any
 try:
     import nodes as _comfy_core_nodes
     _PreviewImageBase = _comfy_core_nodes.PreviewImage
+    _SaveImageBase = _comfy_core_nodes.SaveImage
 except (ImportError, AttributeError):
     _PreviewImageBase = object
+    _SaveImageBase = object
 
 
 MAX_SEED = 0xFFFFFFFFFFFFFFFF
@@ -565,13 +567,17 @@ class Qing_ImageGallery:
     @classmethod
     def INPUT_TYPES(cls):
         return {
-            "required": {"images": ("IMAGE",)},
+            "required": {
+                "images": ("IMAGE",),
+                "filename_prefix": ("STRING", {"default": "qing_gallery"}),
+            },
             "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
         }
 
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("images",)
     FUNCTION = "show_images"
+    OUTPUT_NODE = True
 
     CATEGORY = "qing/Output"
     DESCRIPTION = (
@@ -580,8 +586,26 @@ class Qing_ImageGallery:
     )
     SEARCH_ALIASES = ["image gallery", "gallery", "image carousel", "图片画廊", "上一张", "下一张"]
 
-    def show_images(self, images, prompt=None, extra_pnginfo=None):
-        return (images,)
+    def __init__(self):
+        self._preview_writer = _PreviewImageBase()
+        self._save_writer = _SaveImageBase()
+
+    def show_images(self, images, filename_prefix="qing_gallery", prompt=None, extra_pnginfo=None):
+        self._save_writer.save_images(
+            images,
+            filename_prefix=filename_prefix,
+            prompt=prompt,
+            extra_pnginfo=extra_pnginfo,
+        )
+        preview = self._preview_writer.save_images(
+            images,
+            prompt=prompt,
+            extra_pnginfo=extra_pnginfo,
+        )
+        return {
+            "ui": {"gallery": preview.get("ui", {}).get("images", [])},
+            "result": (images,),
+        }
 
 
 class Qing_FaceDetailerProgress:
