@@ -1,0 +1,8 @@
+[project]
+name = "comfyui-batch-prompt-qing"
+version = "1.7.0"
+description = "Real-time local JSONL prompt lists and explicit seed strategies for ComfyUI"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+dependencies = []

@@ -1,0 +1,204 @@
+{
+  "last_node_id": 8,
+  "last_link_id": 12,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "CheckpointLoaderSimple",
+      "pos": [20, 20],
+      "size": [360, 100],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [{"name": "ckpt_name", "type": "COMBO", "widget": {"name": "ckpt_name"}, "link": null}],
+      "outputs": [
+        {"name": "MODEL", "type": "MODEL", "links": [5]},
+        {"name": "CLIP", "type": "CLIP", "links": [1, 2]},
+        {"name": "VAE", "type": "VAE", "links": [7]}
+      ],
+      "properties": {"Node name for S&R": "CheckpointLoaderSimple"},
+      "widgets_values": ["choose_your_checkpoint.safetensors"]
+    },
+    {
+      "id": 2,
+      "type": "TE_BatchPromptSource",
+      "pos": [20, 160],
+      "size": [680, 540],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {"name": "source_mode", "type": "COMBO", "widget": {"name": "source_mode"}, "link": null},
+        {"name": "positive", "type": "STRING", "widget": {"name": "positive"}, "link": null},
+        {"name": "negative", "type": "STRING", "widget": {"name": "negative"}, "link": null},
+        {"name": "name", "type": "STRING", "widget": {"name": "name"}, "link": null},
+        {"name": "prompt_file", "type": "STRING", "widget": {"name": "prompt_file"}, "link": null},
+        {"name": "count", "type": "INT", "widget": {"name": "count"}, "link": null},
+        {"name": "seed_mode", "type": "COMBO", "widget": {"name": "seed_mode"}, "link": null},
+        {"name": "seed", "type": "INT", "widget": {"name": "seed"}, "link": null},
+        {"name": "max_images", "type": "INT", "widget": {"name": "max_images"}, "link": null},
+        {"name": "jsonl_editor", "type": "STRING", "widget": {"name": "jsonl_editor"}, "link": null},
+        {"name": "use_negative", "type": "BOOLEAN", "widget": {"name": "use_negative"}, "link": null}
+      ],
+      "outputs": [
+        {"name": "positive", "type": "STRING", "links": [3], "slot_index": 0},
+        {"name": "negative", "type": "STRING", "links": [4], "slot_index": 1},
+        {"name": "seed", "type": "INT", "links": [6], "slot_index": 2},
+        {"name": "name", "type": "STRING", "links": null, "slot_index": 3},
+        {"name": "index", "type": "INT", "links": null, "slot_index": 4}
+      ],
+      "title": "批量 Prompt 源（qing）",
+      "properties": {"Node name for S&R": "TE_BatchPromptSource"},
+      "widgets_values": [
+        "jsonl_file",
+        "",
+        "",
+        "manual",
+        "example.jsonl",
+        1,
+        "shared_random_per_copy｜按轮随机：同轮卡片共用",
+        100,
+        100,
+        "",
+        false
+      ],
+      "widgets_values_named": {
+        "source_mode": "jsonl_file",
+        "positive": "",
+        "negative": "",
+        "name": "manual",
+        "prompt_file": "example.jsonl",
+        "count": 1,
+        "seed_mode": "shared_random_per_copy｜按轮随机：同轮卡片共用",
+        "seed": 100,
+        "max_images": 100,
+        "jsonl_editor": "",
+        "use_negative": false
+      },
+      "color": "#1f5132",
+      "bgcolor": "#173924"
+    },
+    {
+      "id": 3,
+      "type": "CLIPTextEncode",
+      "pos": [750, 30],
+      "size": [300, 150],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {"name": "clip", "type": "CLIP", "link": 1},
+        {"name": "text", "type": "STRING", "widget": {"name": "text"}, "link": 3}
+      ],
+      "outputs": [{"name": "CONDITIONING", "type": "CONDITIONING", "links": [8]}],
+      "title": "批量正面条件",
+      "properties": {"Node name for S&R": "CLIPTextEncode"},
+      "widgets_values": [""]
+    },
+    {
+      "id": 4,
+      "type": "CLIPTextEncode",
+      "pos": [750, 220],
+      "size": [300, 150],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {"name": "clip", "type": "CLIP", "link": 2},
+        {"name": "text", "type": "STRING", "widget": {"name": "text"}, "link": 4}
+      ],
+      "outputs": [{"name": "CONDITIONING", "type": "CONDITIONING", "links": [9]}],
+      "title": "批量负面条件",
+      "properties": {"Node name for S&R": "CLIPTextEncode"},
+      "widgets_values": [""]
+    },
+    {
+      "id": 5,
+      "type": "EmptyLatentImage",
+      "pos": [750, 430],
+      "size": [300, 110],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {"name": "width", "type": "INT", "widget": {"name": "width"}, "link": null},
+        {"name": "height", "type": "INT", "widget": {"name": "height"}, "link": null},
+        {"name": "batch_size", "type": "INT", "widget": {"name": "batch_size"}, "link": null}
+      ],
+      "outputs": [{"name": "LATENT", "type": "LATENT", "links": [10]}],
+      "properties": {"Node name for S&R": "EmptyLatentImage"},
+      "widgets_values": [512, 512, 1]
+    },
+    {
+      "id": 6,
+      "type": "KSampler",
+      "pos": [1100, 100],
+      "size": [300, 480],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {"name": "model", "type": "MODEL", "link": 5},
+        {"name": "positive", "type": "CONDITIONING", "link": 8},
+        {"name": "negative", "type": "CONDITIONING", "link": 9},
+        {"name": "latent_image", "type": "LATENT", "link": 10},
+        {"name": "seed", "type": "INT", "widget": {"name": "seed"}, "link": 6},
+        {"name": "steps", "type": "INT", "widget": {"name": "steps"}, "link": null},
+        {"name": "cfg", "type": "FLOAT", "widget": {"name": "cfg"}, "link": null},
+        {"name": "sampler_name", "type": "COMBO", "widget": {"name": "sampler_name"}, "link": null},
+        {"name": "scheduler", "type": "COMBO", "widget": {"name": "scheduler"}, "link": null},
+        {"name": "denoise", "type": "FLOAT", "widget": {"name": "denoise"}, "link": null}
+      ],
+      "outputs": [{"name": "LATENT", "type": "LATENT", "links": [11]}],
+      "properties": {"Node name for S&R": "KSampler"},
+      "widgets_values": [0, "fixed", 20, 7, "euler", "normal", 1]
+    },
+    {
+      "id": 7,
+      "type": "VAEDecode",
+      "pos": [1450, 180],
+      "size": [210, 80],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {"name": "samples", "type": "LATENT", "link": 11},
+        {"name": "vae", "type": "VAE", "link": 7}
+      ],
+      "outputs": [{"name": "IMAGE", "type": "IMAGE", "links": [12]}],
+      "properties": {"Node name for S&R": "VAEDecode"},
+      "widgets_values": []
+    },
+    {
+      "id": 8,
+      "type": "PreviewImage",
+      "pos": [1700, 80],
+      "size": [360, 430],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [{"name": "images", "type": "IMAGE", "link": 12}],
+      "outputs": [{"name": "images", "type": "IMAGE", "links": null}],
+      "properties": {"Node name for S&R": "PreviewImage"},
+      "widgets_values": []
+    }
+  ],
+  "links": [
+    [1, 1, 1, 3, 0, "CLIP"],
+    [2, 1, 1, 4, 0, "CLIP"],
+    [3, 2, 0, 3, 1, "STRING"],
+    [4, 2, 1, 4, 1, "STRING"],
+    [5, 1, 0, 6, 0, "MODEL"],
+    [6, 2, 2, 6, 4, "INT"],
+    [7, 1, 2, 7, 1, "VAE"],
+    [8, 3, 0, 6, 1, "CONDITIONING"],
+    [9, 4, 0, 6, 2, "CONDITIONING"],
+    [10, 5, 0, 6, 3, "LATENT"],
+    [11, 6, 0, 7, 0, "LATENT"],
+    [12, 7, 0, 8, 0, "IMAGE"]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {"ds": {"scale": 0.78, "offset": [60, 80]}},
+  "version": 0.4
+}
