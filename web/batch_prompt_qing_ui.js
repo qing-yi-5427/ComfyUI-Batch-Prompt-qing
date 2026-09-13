@@ -107,9 +107,15 @@ function injectGalleryStyle() {
         .bpq-gallery-view { flex:1 1 auto; min-height:0; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1px solid #3e464f; border-radius:6px; background:#15191d; }
         .bpq-gallery-image { display:block; width:100%; height:100%; object-fit:contain; }
         .bpq-gallery-empty { padding:24px; color:#8d99a5; text-align:center; }
+        .bpq-gallery-all { display:none; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:8px; width:100%; height:100%; padding:8px; overflow:auto; }
+        .bpq-gallery-all[data-open="true"] { display:grid; }
+        .bpq-gallery-thumb { min-width:0; min-height:0; padding:3px; border:1px solid #424b55; border-radius:6px; background:#20262c; cursor:pointer; }
+        .bpq-gallery-thumb:hover { border-color:#4db27c; }
+        .bpq-gallery-thumb img { display:block; width:100%; height:100%; min-height:100px; object-fit:contain; border-radius:4px; background:#15191d; }
         .bpq-gallery-toolbar { flex:0 0 auto; display:flex; align-items:center; justify-content:center; gap:8px; }
         .bpq-gallery-button { appearance:none; min-width:76px; height:28px; padding:0 10px; border:1px solid #505a65; border-radius:6px; background:#30363e; color:#e7edf2; cursor:pointer; font:600 11px Arial,"Microsoft YaHei",sans-serif; }
         .bpq-gallery-button:hover { background:#3c4651; }
+        .bpq-gallery-button-active { border-color:#4db27c; background:#236846; color:#f3fff8; }
         .bpq-gallery-button:disabled { cursor:default; opacity:.4; }
         .bpq-gallery-counter { min-width:70px; color:#aeb9c4; text-align:center; font-variant-numeric:tabular-nums; }
         .bpq-gallery-status { flex:0 0 auto; color:#8f9aa5; font-size:10px; text-align:center; }
@@ -888,13 +894,39 @@ function updateGallery(node) {
     node.__bpqGalleryIndex = images.length ? index : 0;
     if (node.__bpqGalleryImage) {
         node.__bpqGalleryImage.src = images.length ? galleryImageUrl(images[index], index) : "";
-        node.__bpqGalleryImage.style.display = images.length ? "block" : "none";
+        node.__bpqGalleryImage.style.display = images.length && !node.__bpqGalleryShowingAll ? "block" : "none";
     }
     if (node.__bpqGalleryEmpty) node.__bpqGalleryEmpty.style.display = images.length ? "none" : "block";
+    if (node.__bpqGalleryAll) {
+        node.__bpqGalleryAll.dataset.open = node.__bpqGalleryShowingAll && images.length ? "true" : "false";
+        node.__bpqGalleryAll.replaceChildren();
+        if (node.__bpqGalleryShowingAll && images.length) {
+            images.forEach((item, thumbIndex) => {
+                const thumb = document.createElement("button");
+                thumb.type = "button";
+                thumb.className = "bpq-gallery-thumb";
+                thumb.title = `查看第 ${thumbIndex + 1} 张`;
+                const thumbImage = document.createElement("img");
+                thumbImage.alt = `第 ${thumbIndex + 1} 张结果`;
+                thumbImage.src = galleryImageUrl(item, thumbIndex);
+                thumb.append(thumbImage);
+                thumb.addEventListener("click", () => {
+                    node.__bpqGalleryIndex = thumbIndex;
+                    node.__bpqGalleryShowingAll = false;
+                    updateGallery(node);
+                });
+                node.__bpqGalleryAll.append(thumb);
+            });
+        }
+    }
     if (node.__bpqGalleryCounter) node.__bpqGalleryCounter.textContent = images.length ? `${index + 1} / ${images.length}` : "暂无结果";
     if (node.__bpqGalleryStatus) node.__bpqGalleryStatus.textContent = images.length ? `已收到 ${images.length} 张 · 可用上一张/下一张切换` : "等待生成结果…";
     if (node.__bpqGalleryPrevious) node.__bpqGalleryPrevious.disabled = images.length <= 1;
     if (node.__bpqGalleryNext) node.__bpqGalleryNext.disabled = images.length <= 1;
+    if (node.__bpqGalleryAllButton) {
+        node.__bpqGalleryAllButton.disabled = images.length === 0;
+        node.__bpqGalleryAllButton.classList.toggle("bpq-gallery-button-active", Boolean(node.__bpqGalleryShowingAll));
+    }
     node.graph?.setDirtyCanvas?.(true, true);
 }
 
@@ -910,6 +942,7 @@ function resetGallery(node, promptId) {
     node.__bpqGalleryProgressiveEvents = 0;
     node.__bpqGalleryImages = [];
     node.__bpqGalleryIndex = 0;
+    node.__bpqGalleryShowingAll = false;
     updateGallery(node);
 }
 
@@ -937,7 +970,10 @@ function setupGallery(node) {
     const empty = document.createElement("div");
     empty.className = "bpq-gallery-empty";
     empty.textContent = "等待第一张图片生成…";
-    view.append(image, empty);
+    const allImages = document.createElement("div");
+    allImages.className = "bpq-gallery-all";
+    allImages.dataset.open = "false";
+    view.append(image, empty, allImages);
     const toolbar = document.createElement("div");
     toolbar.className = "bpq-gallery-toolbar";
     const previous = document.createElement("button");
@@ -952,7 +988,16 @@ function setupGallery(node) {
     next.className = "bpq-gallery-button";
     next.textContent = "下一张";
     next.addEventListener("click", () => moveGallery(node, 1));
-    toolbar.append(previous, counter, next);
+    const allButton = document.createElement("button");
+    allButton.type = "button";
+    allButton.className = "bpq-gallery-button";
+    allButton.textContent = "全部";
+    allButton.title = "显示本轮全部图片";
+    allButton.addEventListener("click", () => {
+        node.__bpqGalleryShowingAll = !node.__bpqGalleryShowingAll;
+        updateGallery(node);
+    });
+    toolbar.append(previous, counter, next, allButton);
     const status = document.createElement("div");
     status.className = "bpq-gallery-status";
     root.append(view, toolbar, status);
@@ -962,6 +1007,8 @@ function setupGallery(node) {
     node.__bpqGalleryPrevious = previous;
     node.__bpqGalleryCounter = counter;
     node.__bpqGalleryNext = next;
+    node.__bpqGalleryAllButton = allButton;
+    node.__bpqGalleryAll = allImages;
     node.__bpqGalleryStatus = status;
     node.__bpqGalleryImages = [];
     node.__bpqGalleryIndex = 0;
