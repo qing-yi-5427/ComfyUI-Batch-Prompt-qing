@@ -515,7 +515,7 @@ function createEditor(node) {
     const pickerHeading = document.createElement("strong");
     pickerHeading.textContent = "选择 JSONL 文件";
     const pickerHint = document.createElement("span");
-    pickerHint.textContent = "插件 prompts 目录；当前绝对路径所在文件夹也会列出";
+    pickerHint.textContent = "插件 prompts、用户 Prompt 目录和当前文件夹";
     pickerTitle.append(pickerHeading, pickerHint);
     const refreshFiles = makeButton("刷新", "bpte-btn", () => openFilePicker(node), "重新读取文件列表");
     const closePicker = makeButton("关闭", "bpte-btn", () => closeFilePicker(node));

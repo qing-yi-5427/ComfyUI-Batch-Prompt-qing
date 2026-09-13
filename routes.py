@@ -72,6 +72,11 @@ async def list_prompt_files(request):
             if root in path.resolve().parents:
                 append_file(path, source="插件 prompts", relative_to=root)
 
+        user_prompt_dir = root.parents[2] / "user" / "default" / "batch_prompt_qing"
+        if user_prompt_dir.is_dir() and user_prompt_dir != root:
+            for path in sorted(user_prompt_dir.glob("*.jsonl"), key=lambda item: str(item).lower()):
+                append_file(path, source="用户 Prompt 目录")
+
         current = request.query.get("current", "").strip()
         current_path = Path(current).expanduser() if current else None
         if current_path is not None and current_path.is_absolute():

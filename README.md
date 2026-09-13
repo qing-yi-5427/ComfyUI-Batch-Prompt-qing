@@ -54,6 +54,8 @@ git -C "你的 ComfyUI 路径\custom_nodes\ComfyUI-Batch-Prompt-qing" pull --ff-
 
 `JSONL 文件` 可以填写相对于插件 `prompts` 目录的文件名，例如 `example.jsonl`，也可以填写本机 `.jsonl` 文件的绝对路径。
 
+点击卡片区上方的 **选择文件**，可以直接选择插件 `prompts` 目录、`ComfyUI/user/default/batch_prompt_qing` 用户 Prompt 目录，以及当前绝对路径所在文件夹中的 JSONL 文件，不必手动输入路径。
+
 文件载入后会显示为卡片。卡片编辑、新增、复制、排序和删除会立即成为下一次 Queue 的输入；黄色状态表示修改尚未写回文件。
 
 - **保存 JSONL**：校验卡片并写回当前文件。
