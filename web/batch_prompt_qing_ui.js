@@ -3,6 +3,7 @@ import { api } from "../../../scripts/api.js";
 
 const NODE_NAME = "TE_BatchPromptSource";
 const PREVIEW_ROUTE = "/batch_prompt_qing/preview";
+const FILE_LIST_ROUTE = "/batch_prompt_qing/files";
 const SAVE_ROUTE = "/batch_prompt_qing/save";
 const HIDDEN_TYPE = "batch-prompt-te-hidden";
 const STYLE_ID = "batch-prompt-te-card-editor-style";
@@ -36,7 +37,7 @@ function injectStyle() {
     const style = document.createElement("style");
     style.id = STYLE_ID;
     style.textContent = `
-        .bpte-editor { box-sizing:border-box; width:100%; height:100%; min-height:320px; display:flex; flex-direction:column; overflow:hidden; border:1px solid var(--border-color,#484d55); border-radius:9px; background:var(--comfy-menu-bg,#202328); color:var(--input-text,#e8ebef); font:12px/1.45 Arial,"Microsoft YaHei",sans-serif; }
+        .bpte-editor { position:relative; box-sizing:border-box; width:100%; height:100%; min-height:320px; display:flex; flex-direction:column; overflow:hidden; border:1px solid var(--border-color,#484d55); border-radius:9px; background:var(--comfy-menu-bg,#202328); color:var(--input-text,#e8ebef); font:12px/1.45 Arial,"Microsoft YaHei",sans-serif; }
         .bpte-editor * { box-sizing:border-box; }
         .bpte-toolbar { flex:0 0 auto; display:flex; align-items:center; gap:7px; min-height:44px; padding:7px 9px; border-bottom:1px solid #41464e; background:#272b31; }
         .bpte-title { min-width:0; margin-right:auto; }
@@ -71,6 +72,20 @@ function injectStyle() {
         .bpte-footer { flex:0 0 auto; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 10px; border-top:1px solid #3d4249; color:#8e99a5; background:#23272c; font-size:10px; }
         .bpte-dirty-dot { display:inline-block; width:7px; height:7px; margin-right:5px; border-radius:50%; background:#68727d; }
         .bpte-dirty-dot[data-dirty="true"] { background:#f0b65e; box-shadow:0 0 0 2px rgba(240,182,94,.14); }
+        .bpte-file-picker { position:absolute; inset:8px; z-index:50; display:none; flex-direction:column; overflow:hidden; border:1px solid #555e69; border-radius:9px; background:#20242a; box-shadow:0 12px 36px rgba(0,0,0,.55); }
+        .bpte-file-picker[data-open="true"] { display:flex; }
+        .bpte-picker-head { display:flex; align-items:center; gap:8px; min-height:46px; padding:8px 10px; border-bottom:1px solid #414850; background:#292e35; }
+        .bpte-picker-title { min-width:0; margin-right:auto; }
+        .bpte-picker-title strong { display:block; color:#f2f5f7; font-size:13px; }
+        .bpte-picker-title span { display:block; color:#929da8; font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .bpte-file-list { flex:1 1 auto; display:flex; flex-direction:column; gap:7px; min-height:0; padding:10px; overflow:auto; }
+        .bpte-file-item { appearance:none; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 12px; width:100%; padding:9px 11px; border:1px solid #454c55; border-radius:7px; background:#282d33; color:#e9edf1; text-align:left; cursor:pointer; }
+        .bpte-file-item:hover { border-color:#397e5c; background:#2c3532; }
+        .bpte-file-item[data-current="true"] { border-color:#368760; box-shadow:inset 3px 0 #42a874; }
+        .bpte-file-name { min-width:0; overflow:hidden; font-weight:700; white-space:nowrap; text-overflow:ellipsis; }
+        .bpte-file-source { color:#83cda3; font-size:10px; }
+        .bpte-file-path { grid-column:1/-1; min-width:0; overflow:hidden; color:#89949f; font-size:10px; white-space:nowrap; text-overflow:ellipsis; }
+        .bpte-picker-empty { display:grid; place-items:center; min-height:170px; padding:24px; border:1px dashed #4b535d; border-radius:8px; color:#909ba6; text-align:center; }
     `;
     document.head.append(style);
 }
@@ -319,6 +334,85 @@ function validateRecords(node) {
     return recordsToJsonl(records);
 }
 
+function closeFilePicker(node) {
+    const picker = node.__bpteFilePicker;
+    if (!picker) return;
+    picker.dataset.open = "false";
+}
+
+function formatFileSize(bytes) {
+    const size = Number(bytes);
+    if (!Number.isFinite(size) || size < 1024) return `${Math.max(0, Math.round(size || 0))} B`;
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KiB`;
+    return `${(size / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
+function renderFilePicker(node, files = []) {
+    const list = node.__bpteFileList;
+    if (!list) return;
+    list.replaceChildren();
+    const current = String(findWidget(node, "prompt_file")?.value || "").trim().toLowerCase();
+    if (!files.length) {
+        const empty = document.createElement("div");
+        empty.className = "bpte-picker-empty";
+        empty.innerHTML = "<div><strong>没有找到 JSONL 文件</strong><br>请把文件放进插件 prompts 目录，或手动填写绝对路径。</div>";
+        list.append(empty);
+        return;
+    }
+    files.forEach((file) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "bpte-file-item";
+        const value = String(file.value || "");
+        button.dataset.current = value.toLowerCase() === current ? "true" : "false";
+        const name = document.createElement("span");
+        name.className = "bpte-file-name";
+        name.textContent = String(file.name || value);
+        const source = document.createElement("span");
+        source.className = "bpte-file-source";
+        source.textContent = `${String(file.source || "JSONL")} · ${formatFileSize(file.size)}`;
+        const path = document.createElement("span");
+        path.className = "bpte-file-path";
+        path.textContent = value;
+        button.append(name, source, path);
+        button.addEventListener("click", () => selectPromptFile(node, value));
+        list.append(button);
+    });
+}
+
+async function openFilePicker(node) {
+    const picker = node.__bpteFilePicker;
+    if (!picker) return;
+    picker.dataset.open = "true";
+    const list = node.__bpteFileList;
+    if (list) list.innerHTML = "<div class=\"bpte-picker-empty\">正在读取可选文件…</div>";
+    const current = String(findWidget(node, "prompt_file")?.value || "").trim();
+    try {
+        const query = current ? `?current=${encodeURIComponent(current)}` : "";
+        const response = await api.fetchApi(`${FILE_LIST_ROUTE}${query}`, { cache: "no-store" });
+        const data = await response.json();
+        if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        renderFilePicker(node, Array.isArray(data.files) ? data.files : []);
+    } catch (error) {
+        if (!list) return;
+        list.innerHTML = `<div class="bpte-picker-empty">读取文件列表失败：${String(error?.message || error)}</div>`;
+    }
+}
+
+function selectPromptFile(node, value) {
+    if (node.__bpteDirty && !window.confirm("当前卡片有未保存修改。切换文件会丢弃这些修改，是否继续？")) return;
+    const widget = findWidget(node, "prompt_file");
+    if (!widget) return;
+    node.__bpteDirty = false;
+    node.properties ??= {};
+    node.properties.bpte_editor_dirty = false;
+    widget.value = value;
+    widget.callback?.(value);
+    closeFilePicker(node);
+    setStatus(node, "正在读取所选 JSONL…");
+    loadFile(node);
+}
+
 async function loadFile(node, { force = false } = {}) {
     if (findWidget(node, "source_mode")?.value !== "jsonl_file") return;
     if (force && node.__bpteDirty && !window.confirm("当前卡片有未保存修改。确定丢弃修改并重新读取磁盘文件吗？")) return;
@@ -398,6 +492,7 @@ function createEditor(node) {
     status.className = "bpte-status";
     status.textContent = "等待读取";
     title.append(heading, status);
+    const choose = makeButton("选择文件", "bpte-btn", () => openFilePicker(node), "列出插件 prompts 目录和当前文件夹中的 JSONL 文件");
     const reload = makeButton("重新读取", "bpte-btn", () => loadFile(node, { force: true }), "从磁盘重新载入，会替换未保存修改");
     const add = makeButton("添加卡片", "bpte-btn", () => addRecord(node));
     const negativeToggle = makeButton("负面 Prompt · 关", "bpte-btn", () => {
@@ -408,7 +503,26 @@ function createEditor(node) {
     });
     negativeToggle.setAttribute("aria-pressed", "false");
     const save = makeButton("保存 JSONL", "bpte-btn bpte-btn-primary", () => saveFile(node));
-    toolbar.append(title, reload, add, negativeToggle, save);
+    toolbar.append(title, choose, reload, add, negativeToggle, save);
+
+    const picker = document.createElement("section");
+    picker.className = "bpte-file-picker";
+    picker.dataset.open = "false";
+    const pickerHead = document.createElement("div");
+    pickerHead.className = "bpte-picker-head";
+    const pickerTitle = document.createElement("div");
+    pickerTitle.className = "bpte-picker-title";
+    const pickerHeading = document.createElement("strong");
+    pickerHeading.textContent = "选择 JSONL 文件";
+    const pickerHint = document.createElement("span");
+    pickerHint.textContent = "插件 prompts 目录；当前绝对路径所在文件夹也会列出";
+    pickerTitle.append(pickerHeading, pickerHint);
+    const refreshFiles = makeButton("刷新", "bpte-btn", () => openFilePicker(node), "重新读取文件列表");
+    const closePicker = makeButton("关闭", "bpte-btn", () => closeFilePicker(node));
+    pickerHead.append(pickerTitle, refreshFiles, closePicker);
+    const fileList = document.createElement("div");
+    fileList.className = "bpte-file-list";
+    picker.append(pickerHead, fileList);
 
     const grid = document.createElement("div");
     grid.className = "bpte-grid";
@@ -420,7 +534,7 @@ function createEditor(node) {
     state.append(dot, document.createTextNode("黄点表示尚未写入文件"));
     const summary = document.createElement("span");
     footer.append(state, summary);
-    root.append(toolbar, grid, footer);
+    root.append(toolbar, grid, footer, picker);
 
     node.__bpteRoot = root;
     node.__bpteGrid = grid;
@@ -429,6 +543,8 @@ function createEditor(node) {
     node.__bpteDirtyDot = dot;
     node.__bpteSaveButton = save;
     node.__bpteNegativeButton = negativeToggle;
+    node.__bpteFilePicker = picker;
+    node.__bpteFileList = fileList;
 
     node.__bpteEditorHeight ??= 430;
     const widget = node.addDOMWidget("bpte_card_editor", "customwidget", root, {

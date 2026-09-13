@@ -84,6 +84,8 @@ JSONL 模式下，“每张卡片生成数量”会应用到每一张卡片。�
 - `prompts/example.jsonl`：单条 Prompt 格式示例。
 - `examples/minimal_workflow.json`：只使用本插件和 ComfyUI 原生节点的精简文生图工作流。载入后请先选择你本机已有的 checkpoint。
 
+仓库只跟踪 `prompts/example.jsonl`。你放进 `prompts` 目录的其他 Prompt 文件会被 Git 忽略，不会随提交上传，也不会被正常的 `git pull` 修改。
+
 ## 许可
 
 [MIT License](LICENSE)

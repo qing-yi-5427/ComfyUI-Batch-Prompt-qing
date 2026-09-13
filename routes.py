@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+from pathlib import Path
 
 from aiohttp import web
 from server import PromptServer
@@ -14,6 +15,7 @@ try:
         _resolve_prompt_path,
         atomic_save_prompt_file,
         build_prompt_file_preview,
+        PROMPTS_DIR,
     )
 except ImportError:  # Allows the lightweight route helpers to be unit-tested directly.
     from nodes import (
@@ -21,6 +23,7 @@ except ImportError:  # Allows the lightweight route helpers to be unit-tested di
         _resolve_prompt_path,
         atomic_save_prompt_file,
         build_prompt_file_preview,
+        PROMPTS_DIR,
     )
 
 
@@ -34,6 +37,52 @@ async def preview_prompt_file(request):
         return web.json_response(build_prompt_file_preview(prompt_file))
     except (OSError, ValueError) as error:
         return web.json_response({"ok": False, "error": str(error)}, status=400)
+
+
+@PromptServer.instance.routes.get("/batch_prompt_qing/files")
+async def list_prompt_files(request):
+    """List bundled JSONL files and siblings of the current absolute file."""
+    try:
+        root = PROMPTS_DIR.resolve()
+        files = []
+        seen = set()
+
+        def append_file(path: Path, *, source: str, relative_to: Path | None = None):
+            resolved = path.resolve()
+            if not resolved.is_file() or resolved.suffix.lower() != ".jsonl":
+                return
+            key = str(resolved).lower()
+            if key in seen:
+                return
+            seen.add(key)
+            stat = resolved.stat()
+            files.append({
+                "name": resolved.name,
+                "value": (
+                    resolved.relative_to(relative_to).as_posix()
+                    if relative_to is not None
+                    else str(resolved)
+                ),
+                "source": source,
+                "size": stat.st_size,
+                "modified": stat.st_mtime,
+            })
+
+        for path in sorted(root.rglob("*.jsonl"), key=lambda item: str(item).lower()):
+            if root in path.resolve().parents:
+                append_file(path, source="插件 prompts", relative_to=root)
+
+        current = request.query.get("current", "").strip()
+        current_path = Path(current).expanduser() if current else None
+        if current_path is not None and current_path.is_absolute():
+            current_dir = current_path.resolve().parent
+            if current_dir.is_dir() and current_dir != root:
+                for path in sorted(current_dir.glob("*.jsonl"), key=lambda item: str(item).lower()):
+                    append_file(path, source="当前文件夹")
+
+        return web.json_response({"ok": True, "files": files})
+    except OSError as error:
+        return web.json_response({"ok": False, "error": str(error)}, status=500)
 
 
 @PromptServer.instance.routes.post("/batch_prompt_qing/save")

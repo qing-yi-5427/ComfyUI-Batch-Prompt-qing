@@ -3,3 +3,5 @@ __pycache__/
 .pytest_cache/
 *.jsonl.bak.*
 .*.jsonl.*.tmp
+prompts/**
+!prompts/example.jsonl
