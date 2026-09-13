@@ -977,7 +977,7 @@ function installGalleryExecutionListener() {
         const detail = event?.detail || {};
         const node = galleryNodes.get(String(detail.node));
         if (!node) return;
-        const images = detail.output?.images || detail.output?.ui?.images || [];
+        const images = detail.output?.gallery || detail.output?.ui?.gallery || [];
         appendGalleryImages(node, detail.prompt_id || detail.promptId || null, images);
     });
 }

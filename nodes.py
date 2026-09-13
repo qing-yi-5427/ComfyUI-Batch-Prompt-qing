@@ -559,8 +559,20 @@ class BatchPromptSource:
         return positives, negatives, seeds, names, indexes
 
 
-class Qing_ImageGallery(_PreviewImageBase):
-    """Preview a complete image batch with a small previous/next gallery UI."""
+class Qing_ImageGallery:
+    """Emit temporary preview files for the qing previous/next gallery UI."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {"images": ("IMAGE",)},
+            "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("images",)
+    FUNCTION = "show_images"
+    OUTPUT_NODE = True
 
     CATEGORY = "qing/Output"
     DESCRIPTION = (
@@ -568,6 +580,20 @@ class Qing_ImageGallery(_PreviewImageBase):
         "它只负责预览，不改变输入图片或保存逻辑。"
     )
     SEARCH_ALIASES = ["image gallery", "gallery", "image carousel", "图片画廊", "上一张", "下一张"]
+
+    def __init__(self):
+        self._preview_writer = _PreviewImageBase()
+
+    def show_images(self, images, prompt=None, extra_pnginfo=None):
+        result = self._preview_writer.save_images(
+            images,
+            prompt=prompt,
+            extra_pnginfo=extra_pnginfo,
+        )
+        return {
+            "ui": {"gallery": result.get("ui", {}).get("images", [])},
+            "result": (images,),
+        }
 
 
 __all__ = [
