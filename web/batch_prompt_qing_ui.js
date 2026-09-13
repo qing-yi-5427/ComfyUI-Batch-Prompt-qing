@@ -969,6 +969,10 @@ let galleryEventInstalled = false;
 function installGalleryExecutionListener() {
     if (galleryEventInstalled) return;
     galleryEventInstalled = true;
+    api.addEventListener("execution_start", (event) => {
+        const promptId = event?.detail?.prompt_id || event?.detail?.promptId || null;
+        galleryNodes.forEach((node) => resetGallery(node, promptId));
+    });
     api.addEventListener("executed", (event) => {
         const detail = event?.detail || {};
         const node = galleryNodes.get(String(detail.node));
