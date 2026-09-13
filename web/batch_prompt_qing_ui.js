@@ -907,6 +907,7 @@ function moveGallery(node, delta) {
 
 function resetGallery(node, promptId) {
     node.__bpqGalleryPromptId = promptId || null;
+    node.__bpqGalleryProgressiveEvents = 0;
     node.__bpqGalleryImages = [];
     node.__bpqGalleryIndex = 0;
     updateGallery(node);
@@ -1012,10 +1013,18 @@ function installGalleryExecutionListener() {
         const promptId = event?.detail?.prompt_id || event?.detail?.promptId || null;
         galleryNodes.forEach((node) => resetGallery(node, promptId));
     });
+    api.addEventListener("qing_gallery_image", (event) => {
+        const detail = event?.detail || {};
+        const node = galleryNodes.get(String(detail.node));
+        if (!node || !detail.image) return;
+        node.__bpqGalleryProgressiveEvents = (node.__bpqGalleryProgressiveEvents || 0) + 1;
+        appendGalleryImages(node, detail.prompt_id || detail.promptId || null, [detail.image]);
+    });
     api.addEventListener("executed", (event) => {
         const detail = event?.detail || {};
         const node = galleryNodes.get(String(detail.node));
         if (!node) return;
+        if (node.__bpqGalleryProgressiveEvents > 0) return;
         const images = detail.output?.gallery || detail.output?.ui?.gallery || [];
         appendGalleryImages(node, detail.prompt_id || detail.promptId || null, images);
     });

@@ -590,6 +590,27 @@ class Qing_ImageGallery:
             prompt=prompt,
             extra_pnginfo=extra_pnginfo,
         )
+        try:
+            from comfy_execution.utils import get_executing_context
+            from server import PromptServer
+
+            context = get_executing_context()
+            server = PromptServer.instance
+            if context is not None and server is not None and server.client_id is not None:
+                for image_info in result.get("ui", {}).get("images", []):
+                    server.send_sync(
+                        "qing_gallery_image",
+                        {
+                            "node": context.node_id,
+                            "prompt_id": context.prompt_id,
+                            "list_index": context.list_index,
+                            "image": image_info,
+                        },
+                        server.client_id,
+                    )
+        except (ImportError, AttributeError, RuntimeError):
+            # The gallery still returns its final list when running without a UI client.
+            pass
         return {
             "ui": {"gallery": result.get("ui", {}).get("images", [])},
             "result": (images,),
