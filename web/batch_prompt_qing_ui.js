@@ -1015,7 +1015,8 @@ function installGalleryExecutionListener() {
     });
     api.addEventListener("qing_gallery_image", (event) => {
         const detail = event?.detail || {};
-        const node = galleryNodes.get(String(detail.node));
+        const node = galleryNodes.get(String(detail.gallery_node || detail.node)) ||
+            (detail.gallery ? [...galleryNodes.values()][0] : null);
         if (!node || !detail.image) return;
         node.__bpqGalleryProgressiveEvents = (node.__bpqGalleryProgressiveEvents || 0) + 1;
         appendGalleryImages(node, detail.prompt_id || detail.promptId || null, [detail.image]);

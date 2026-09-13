@@ -580,15 +580,47 @@ class Qing_ImageGallery:
     )
     SEARCH_ALIASES = ["image gallery", "gallery", "image carousel", "图片画廊", "上一张", "下一张"]
 
+    def show_images(self, images, prompt=None, extra_pnginfo=None):
+        return (images,)
+
+
+class Qing_FaceDetailerProgress:
+    """Compatibility wrapper that streams each FaceDetailer image to the gallery."""
+
+    RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE", "MASK", "DETAILER_PIPE", "IMAGE")
+    RETURN_NAMES = ("image", "cropped_refined", "cropped_enhanced_alpha", "mask", "detailer_pipe", "cnet_images")
+    OUTPUT_IS_LIST = (False, True, True, False, False, True)
+    FUNCTION = "doit"
+    CATEGORY = "qing/Output"
+    DESCRIPTION = "FaceDetailer wrapper that streams completed images to the qing gallery."
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        impact = _comfy_core_nodes.NODE_CLASS_MAPPINGS.get("FaceDetailer")
+        if impact is None:
+            return {"required": {"image": ("IMAGE",)}}
+        source = impact.INPUT_TYPES()
+        result = {key: dict(value) for key, value in source.items() if key != "hidden"}
+        result["hidden"] = {
+            "prompt": "PROMPT",
+            "extra_pnginfo": "EXTRA_PNGINFO",
+        }
+        return result
+
     def __init__(self):
+        impact = _comfy_core_nodes.NODE_CLASS_MAPPINGS.get("FaceDetailer")
+        if impact is None:
+            raise RuntimeError("Impact Pack FaceDetailer is not available")
+        self._delegate = impact()
         self._preview_writer = _PreviewImageBase()
 
-    def show_images(self, images, prompt=None, extra_pnginfo=None):
-        result = self._preview_writer.save_images(
-            images,
-            prompt=prompt,
-            extra_pnginfo=extra_pnginfo,
-        )
+    def doit(self, **kwargs):
+        prompt = kwargs.pop("prompt", None)
+        extra_pnginfo = kwargs.pop("extra_pnginfo", None)
+        result = self._delegate.doit(**kwargs)
+        image = result[0] if isinstance(result, tuple) and result else None
+        if image is None:
+            return result
         try:
             from comfy_execution.utils import get_executing_context
             from server import PromptServer
@@ -596,11 +628,17 @@ class Qing_ImageGallery:
             context = get_executing_context()
             server = PromptServer.instance
             if context is not None and server is not None and server.client_id is not None:
-                for image_info in result.get("ui", {}).get("images", []):
+                preview = self._preview_writer.save_images(
+                    image,
+                    prompt=prompt,
+                    extra_pnginfo=extra_pnginfo,
+                )
+                for image_info in preview.get("ui", {}).get("images", []):
                     server.send_sync(
                         "qing_gallery_image",
                         {
                             "node": context.node_id,
+                            "gallery": True,
                             "prompt_id": context.prompt_id,
                             "list_index": context.list_index,
                             "image": image_info,
@@ -608,14 +646,14 @@ class Qing_ImageGallery:
                         server.client_id,
                     )
         except (ImportError, AttributeError, RuntimeError):
-            # The gallery still returns its final list when running without a UI client.
             pass
-        return (images,)
+        return result
 
 
 __all__ = [
     "BatchPromptSource",
     "Qing_ImageGallery",
+    "Qing_FaceDetailerProgress",
     "HARD_MAX_IMAGES",
     "MAX_SEED",
     "PROMPTS_DIR",
