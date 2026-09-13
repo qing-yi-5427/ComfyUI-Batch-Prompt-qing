@@ -1,13 +1,17 @@
 import { app } from "../../../scripts/app.js";
 import { api } from "../../../scripts/api.js";
 
-const NODE_NAME = "TE_BatchPromptSource";
+const NODE_NAME = "Qing_BatchPromptSource";
+const LEGACY_NODE_NAME = "TE_BatchPromptSource";
+const GALLERY_NODE_NAME = "Qing_ImageGallery";
+const LEGACY_GALLERY_NODE_NAME = "TE_ImageGallery";
 const PREVIEW_ROUTE = "/batch_prompt_qing/preview";
 const FILE_LIST_ROUTE = "/batch_prompt_qing/files";
 const TRANSLATE_ROUTE = "/batch_prompt_qing/translate";
 const SAVE_ROUTE = "/batch_prompt_qing/save";
 const HIDDEN_TYPE = "batch-prompt-te-hidden";
 const STYLE_ID = "batch-prompt-te-card-editor-style";
+const GALLERY_STYLE_ID = "batch-prompt-qing-gallery-style";
 
 const LABELS = {
     source_mode: "输入模式",
@@ -89,6 +93,26 @@ function injectStyle() {
         .bpte-picker-empty { display:grid; place-items:center; min-height:170px; padding:24px; border:1px dashed #4b535d; border-radius:8px; color:#909ba6; text-align:center; }
         .bpte-translation-note { color:#83cda3 !important; }
         .bpte-readonly { background:#20252a !important; color:#d6dde3 !important; cursor:default; }
+    `;
+    document.head.append(style);
+}
+
+function injectGalleryStyle() {
+    if (document.getElementById(GALLERY_STYLE_ID)) return;
+    const style = document.createElement("style");
+    style.id = GALLERY_STYLE_ID;
+    style.textContent = `
+        .bpq-gallery { box-sizing:border-box; width:100%; height:100%; min-height:360px; display:flex; flex-direction:column; gap:7px; padding:8px; border:1px solid #454d57; border-radius:8px; background:#20252b; color:#e8edf2; font:12px/1.4 Arial,"Microsoft YaHei",sans-serif; }
+        .bpq-gallery * { box-sizing:border-box; }
+        .bpq-gallery-view { flex:1 1 auto; min-height:0; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1px solid #3e464f; border-radius:6px; background:#15191d; }
+        .bpq-gallery-image { display:block; width:100%; height:100%; object-fit:contain; }
+        .bpq-gallery-empty { padding:24px; color:#8d99a5; text-align:center; }
+        .bpq-gallery-toolbar { flex:0 0 auto; display:flex; align-items:center; justify-content:center; gap:8px; }
+        .bpq-gallery-button { appearance:none; min-width:76px; height:28px; padding:0 10px; border:1px solid #505a65; border-radius:6px; background:#30363e; color:#e7edf2; cursor:pointer; font:600 11px Arial,"Microsoft YaHei",sans-serif; }
+        .bpq-gallery-button:hover { background:#3c4651; }
+        .bpq-gallery-button:disabled { cursor:default; opacity:.4; }
+        .bpq-gallery-counter { min-width:70px; color:#aeb9c4; text-align:center; font-variant-numeric:tabular-nums; }
+        .bpq-gallery-status { flex:0 0 auto; color:#8f9aa5; font-size:10px; text-align:center; }
     `;
     document.head.append(style);
 }
@@ -828,10 +852,148 @@ function setupNode(node) {
     applyMode(node, { initial: true });
 }
 
+function galleryImageUrl(item, index) {
+    const params = new URLSearchParams({
+        filename: String(item?.filename || ""),
+        subfolder: String(item?.subfolder || ""),
+        type: String(item?.type || "temp"),
+        rand: `${Date.now()}-${index}`,
+    });
+    const path = `/view?${params.toString()}`;
+    return typeof api.apiURL === "function" ? api.apiURL(path) : path;
+}
+
+function updateGallery(node) {
+    const images = node.__bpqGalleryImages || [];
+    const index = Math.max(0, Math.min(node.__bpqGalleryIndex || 0, images.length - 1));
+    node.__bpqGalleryIndex = images.length ? index : 0;
+    if (node.__bpqGalleryImage) {
+        node.__bpqGalleryImage.src = images.length ? galleryImageUrl(images[index], index) : "";
+        node.__bpqGalleryImage.style.display = images.length ? "block" : "none";
+    }
+    if (node.__bpqGalleryEmpty) node.__bpqGalleryEmpty.style.display = images.length ? "none" : "block";
+    if (node.__bpqGalleryCounter) node.__bpqGalleryCounter.textContent = images.length ? `${index + 1} / ${images.length}` : "暂无结果";
+    if (node.__bpqGalleryStatus) node.__bpqGalleryStatus.textContent = images.length ? `已收到 ${images.length} 张 · 可用上一张/下一张切换` : "等待生成结果…";
+    if (node.__bpqGalleryPrevious) node.__bpqGalleryPrevious.disabled = images.length <= 1;
+    if (node.__bpqGalleryNext) node.__bpqGalleryNext.disabled = images.length <= 1;
+    node.graph?.setDirtyCanvas?.(true, true);
+}
+
+function moveGallery(node, delta) {
+    const images = node.__bpqGalleryImages || [];
+    if (images.length <= 1) return;
+    node.__bpqGalleryIndex = (node.__bpqGalleryIndex + delta + images.length) % images.length;
+    updateGallery(node);
+}
+
+function resetGallery(node, promptId) {
+    node.__bpqGalleryPromptId = promptId || null;
+    node.__bpqGalleryImages = [];
+    node.__bpqGalleryIndex = 0;
+    updateGallery(node);
+}
+
+function appendGalleryImages(node, promptId, images) {
+    if (!Array.isArray(images) || !images.length) return;
+    if (promptId && node.__bpqGalleryPromptId !== promptId) resetGallery(node, promptId);
+    node.__bpqGalleryImages ??= [];
+    node.__bpqGalleryImages.push(...images);
+    node.__bpqGalleryIndex = node.__bpqGalleryImages.length - 1;
+    updateGallery(node);
+}
+
+function setupGallery(node) {
+    if (node.__bpqGalleryReady) return;
+    node.__bpqGalleryReady = true;
+    installGalleryExecutionListener();
+    injectGalleryStyle();
+    const root = document.createElement("div");
+    root.className = "bpq-gallery";
+    const view = document.createElement("div");
+    view.className = "bpq-gallery-view";
+    const image = document.createElement("img");
+    image.className = "bpq-gallery-image";
+    image.alt = "生成结果预览";
+    const empty = document.createElement("div");
+    empty.className = "bpq-gallery-empty";
+    empty.textContent = "等待第一张图片生成…";
+    view.append(image, empty);
+    const toolbar = document.createElement("div");
+    toolbar.className = "bpq-gallery-toolbar";
+    const previous = document.createElement("button");
+    previous.type = "button";
+    previous.className = "bpq-gallery-button";
+    previous.textContent = "上一张";
+    previous.addEventListener("click", () => moveGallery(node, -1));
+    const counter = document.createElement("span");
+    counter.className = "bpq-gallery-counter";
+    const next = document.createElement("button");
+    next.type = "button";
+    next.className = "bpq-gallery-button";
+    next.textContent = "下一张";
+    next.addEventListener("click", () => moveGallery(node, 1));
+    toolbar.append(previous, counter, next);
+    const status = document.createElement("div");
+    status.className = "bpq-gallery-status";
+    root.append(view, toolbar, status);
+
+    node.__bpqGalleryImage = image;
+    node.__bpqGalleryEmpty = empty;
+    node.__bpqGalleryPrevious = previous;
+    node.__bpqGalleryCounter = counter;
+    node.__bpqGalleryNext = next;
+    node.__bpqGalleryStatus = status;
+    node.__bpqGalleryImages = [];
+    node.__bpqGalleryIndex = 0;
+    const widget = node.addDOMWidget("bpq_gallery", "customwidget", root, {
+        getMinHeight: () => 360,
+        getMaxHeight: () => 1200,
+        getHeight: () => node.__bpqGalleryHeight || 500,
+        hideOnZoom: false,
+        serialize: false,
+    });
+    widget.serialize = false;
+    widget.computeSize = (width) => [Math.max(360, width || node.size?.[0] || 520), node.__bpqGalleryHeight || 500];
+    widget.afterResize = () => { root.style.height = `${node.__bpqGalleryHeight || 500}px`; };
+    node.__bpqGalleryWidget = widget;
+    node.__bpqGalleryHeight = 500;
+    root.style.height = "500px";
+    updateGallery(node);
+    node.setSize?.([Math.max(430, node.size?.[0] || 520), Math.max(570, node.size?.[1] || 570)]);
+    node.graph?.setDirtyCanvas?.(true, true);
+}
+
+const galleryNodes = new Map();
+let galleryEventInstalled = false;
+
+function installGalleryExecutionListener() {
+    if (galleryEventInstalled) return;
+    galleryEventInstalled = true;
+    api.addEventListener("executed", (event) => {
+        const detail = event?.detail || {};
+        const node = galleryNodes.get(String(detail.node));
+        if (!node) return;
+        const images = detail.output?.images || detail.output?.ui?.images || [];
+        appendGalleryImages(node, detail.prompt_id || detail.promptId || null, images);
+    });
+}
+
 app.registerExtension({
     name: "TE.BatchPrompt.CardEditor.V18",
     async beforeRegisterNodeDef(nodeType, nodeData) {
-        if (nodeData.name !== NODE_NAME) return;
+        if (nodeData.name === GALLERY_NODE_NAME || nodeData.name === LEGACY_GALLERY_NODE_NAME) {
+            const originalAfterConfigured = nodeType.prototype.onAfterGraphConfigured;
+            nodeType.prototype.onAfterGraphConfigured = function () {
+                const result = originalAfterConfigured?.apply(this, arguments);
+                setTimeout(() => {
+                    setupGallery(this);
+                    galleryNodes.set(String(this.id), this);
+                }, 0);
+                return result;
+            };
+            return;
+        }
+        if (nodeData.name !== NODE_NAME && nodeData.name !== LEGACY_NODE_NAME) return;
         const originalAfterConfigured = nodeType.prototype.onAfterGraphConfigured;
         nodeType.prototype.onAfterGraphConfigured = function () {
             const result = originalAfterConfigured?.apply(this, arguments);
@@ -840,7 +1002,15 @@ app.registerExtension({
         };
     },
     async nodeCreated(node) {
-        if (node.comfyClass !== NODE_NAME && node.type !== NODE_NAME) return;
+        if ([GALLERY_NODE_NAME, LEGACY_GALLERY_NODE_NAME].includes(node.comfyClass) || [GALLERY_NODE_NAME, LEGACY_GALLERY_NODE_NAME].includes(node.type)) {
+            installGalleryExecutionListener();
+            if (!app.configuringGraph) {
+                setupGallery(node);
+                galleryNodes.set(String(node.id), node);
+            }
+            return;
+        }
+        if (![NODE_NAME, LEGACY_NODE_NAME].includes(node.comfyClass) && ![NODE_NAME, LEGACY_NODE_NAME].includes(node.type)) return;
         if (!app.configuringGraph) setupNode(node);
     },
 });

@@ -20,6 +20,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+try:
+    import nodes as _comfy_core_nodes
+    _PreviewImageBase = _comfy_core_nodes.PreviewImage
+except (ImportError, AttributeError):
+    _PreviewImageBase = object
+
 
 MAX_SEED = 0xFFFFFFFFFFFFFFFF
 HARD_MAX_IMAGES = 10_000
@@ -553,8 +559,20 @@ class BatchPromptSource:
         return positives, negatives, seeds, names, indexes
 
 
+class Qing_ImageGallery(_PreviewImageBase):
+    """Preview a complete image batch with a small previous/next gallery UI."""
+
+    CATEGORY = "qing/Output"
+    DESCRIPTION = (
+        "显示一组最终图片，并提供上一张、下一张和当前序号。"
+        "它只负责预览，不改变输入图片或保存逻辑。"
+    )
+    SEARCH_ALIASES = ["image gallery", "gallery", "image carousel", "图片画廊", "上一张", "下一张"]
+
+
 __all__ = [
     "BatchPromptSource",
+    "Qing_ImageGallery",
     "HARD_MAX_IMAGES",
     "MAX_SEED",
     "PROMPTS_DIR",
