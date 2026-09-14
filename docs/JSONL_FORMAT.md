@@ -49,6 +49,58 @@
 {"name":"雨夜","positive":"雨夜街道，霓虹灯倒影，电影感构图"}
 ```
 
+## Krea2 底图 Prompt 模板
+
+在 Krea2 工作流中，JSONL 记录的 `positive` 用作底图提示词：它负责人物状态、头发、表情、动作、服装、环境、光线、镜头和画风。脸型、五官比例等局部结构应交给 FaceDetailer 的提示词单独处理，不要反复混入底图 Prompt。
+
+### 模板
+
+```text
+A [close-up / medium shot / full-body] portrait of an adult Chinese woman,
+[hair color, length, hairstyle and loose strands],
+[expression and gaze direction],
+[pose and action],
+wearing [clothing and accessories],
+in [environment and background],
+[time of day, weather and atmosphere],
+[lighting direction, color temperature and mood],
+[camera angle, lens impression and depth of field],
+[photography / cinematic realism / cel-shaded anime / painterly illustration],
+natural coherent skin texture, unobstructed face
+```
+
+方括号表示需要根据画面替换的内容，不应原样保留在最终 Prompt 中。
+
+### 编写原则
+
+1. 先写景别、构图、发型、表情和动作，让底图先确定人物状态。
+2. 表情和视线只写在底图 Prompt 中，不要在 FaceDetailer Prompt 中重复。
+3. 换场景时，优先只修改动作、服装、环境、光线和镜头。
+4. 不要在底图里反复定义脸型和五官，例如 `oval face`、`pointed chin`、`large almond eyes`、`slender nose` 和 `full lips`。
+5. 不要使用 `face not detailed`，它会与 FaceDetailer 的修脸目标冲突。
+6. 少用 `perfect skin`、`flawless face` 等词，避免皮肤变得塑料。
+7. 建议控制在约 70–120 个英文词；过长可能稀释主体信息。
+
+### 完整示例
+
+```text
+A three-quarter medium close-up portrait of an adult Chinese woman,
+long ink-black hair gathered in a loose high bun with a few wispy strands around the temples,
+calm thoughtful expression, looking slightly past the camera,
+standing beside a rain-wet traditional pavilion,
+wearing an elegant deep teal hanfu with subtle silver embroidery and delicate jade accessories,
+blue hour after rain, quiet garden atmosphere, soft mist in the background,
+warm lantern light from camera-left and cool blue rim light from behind,
+shallow depth of field, natural perspective, cinematic realistic photography,
+natural coherent skin texture, unobstructed face
+```
+
+写入 `.jsonl` 时，一个对象仍须独占一个物理行。可以去掉排版换行，保存成下面这样：
+
+```jsonl
+{"name":"krea2-base-example","positive":"A three-quarter medium close-up portrait of an adult Chinese woman, long ink-black hair gathered in a loose high bun with a few wispy strands around the temples, calm thoughtful expression, looking slightly past the camera, standing beside a rain-wet traditional pavilion, wearing an elegant deep teal hanfu with subtle silver embroidery and delicate jade accessories, blue hour after rain, quiet garden atmosphere, soft mist in the background, warm lantern light from camera-left and cool blue rim light from behind, shallow depth of field, natural perspective, cinematic realistic photography, natural coherent skin texture, unobstructed face"}
+```
+
 ## 常见错误
 
 ### 把整个文件写成 JSON 数组
